@@ -10,7 +10,7 @@ fn process_text(text: &str) -> RESP {
     match text {
         "PING" | "ping" => RESP::SimpleString("PONG".to_string()),
         "COMMAND" | "command" => RESP::Array(vec![RESP::SimpleString("PING".to_string())]),
-        s => panic!("Unknown query: {}", s),
+        _ => RESP::Error(format!("No such command: {}", text)),
     }
 }
 
@@ -22,11 +22,11 @@ fn process(query: &RESP) -> RESP {
             1 => process(&arr[0]),
             _ => RESP::Array(arr.into_iter().map(process).collect()),
         },
-        _ => panic!(),
+        _ => RESP::Error(format!("Invalid query: {:?}", query)),
     }
 }
 
-fn process_stream(stream: &mut TcpStream) -> std::io::Result<()> {
+fn process_stream(stream: &mut TcpStream) -> anyhow::Result<()> {
     loop {
         let mut input = Vec::new();
         loop {
@@ -42,16 +42,17 @@ fn process_stream(stream: &mut TcpStream) -> std::io::Result<()> {
         }
 
         if input.len() == 0 {
-            return stream.shutdown(std::net::Shutdown::Both);
+            stream.shutdown(std::net::Shutdown::Both)?;
+            return Ok(());
         }
 
         let raw_input = String::from_utf8(input).unwrap();
-        let queries = RESP::decode(&raw_input);
+        let queries = RESP::from_str(&raw_input)?;
         // println!("{}", raw_input);
         // println!("{:?}", queries);
 
         let response_resp = process(&queries);
-        let response_text = response_resp.encode();
+        let response_text = response_resp.to_string();
         // println!("response_resp: {:?}", response_resp);
         // println!("response: {}", response_text);
         stream.write_all(response_text.as_bytes())?;
@@ -65,11 +66,8 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
     for stream in listener.incoming() {
-        match stream.map(|mut stream| process_stream(&mut stream)) {
-            Ok(_) => (),
-            Err(e) => {
-                println!("error: {}", e);
-            }
+        if let Err(e) = stream.map(|mut stream| process_stream(&mut stream)) {
+            println!("error: {}", e);
         }
     }
 }
