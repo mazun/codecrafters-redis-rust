@@ -1,8 +1,8 @@
 mod redis;
 use crate::redis::resp::RESP;
 
-use std::{
-    io::{Read, Write},
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
@@ -26,12 +26,12 @@ fn process(query: &RESP) -> RESP {
     }
 }
 
-fn process_stream(stream: &mut TcpStream) -> anyhow::Result<()> {
+async fn process_socket(socket: &mut TcpStream) -> anyhow::Result<()> {
     loop {
         let mut input = Vec::new();
         loop {
             let mut tmp_input = [0u8; 1024];
-            let count = stream.read(&mut tmp_input).unwrap_or_default();
+            let count = socket.read(&mut tmp_input).await?;
             if count == 0 {
                 break;
             }
@@ -42,7 +42,6 @@ fn process_stream(stream: &mut TcpStream) -> anyhow::Result<()> {
         }
 
         if input.len() == 0 {
-            stream.shutdown(std::net::Shutdown::Both)?;
             return Ok(());
         }
 
@@ -55,19 +54,23 @@ fn process_stream(stream: &mut TcpStream) -> anyhow::Result<()> {
         let response_text = response_resp.to_string();
         // println!("response_resp: {:?}", response_resp);
         // println!("response: {}", response_text);
-        stream.write_all(response_text.as_bytes())?;
+        socket.write(response_text.as_bytes()).await?;
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
 
-    for stream in listener.incoming() {
-        if let Err(e) = stream.map(|mut stream| process_stream(&mut stream)) {
-            println!("error: {}", e);
-        }
+    loop {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = process_socket(&mut socket).await {
+                println!("{}", e);
+            };
+        });
     }
 }
