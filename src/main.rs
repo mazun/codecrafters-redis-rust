@@ -1,68 +1,10 @@
+mod redis;
+use crate::redis::resp::RESP;
+
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
 };
-
-#[derive(Debug)]
-enum RESP {
-    SimpleString(String),
-    Error(String),
-    Integer(i32),
-    BulkString(String),
-    Array(Vec<RESP>),
-}
-
-impl RESP {
-    fn encode(&self) -> String {
-        match self {
-            RESP::SimpleString(s) => format!("+{}\r\n", s),
-            RESP::Error(e) => format!("-{}\r\n", e),
-            RESP::Integer(n) => format!(":{}\r\n", n),
-            RESP::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s),
-            RESP::Array(arr) => {
-                let mut s = format!("*{}\r\n", arr.len());
-                for a in arr {
-                    s.push_str(&a.encode());
-                }
-                s
-            }
-        }
-    }
-}
-
-fn decode(text: &str) -> (RESP, usize) {
-    // TODO: change to Result<Resp>
-    assert!(text.len() > 0);
-    println!("processing: {}", text);
-    let end = text.find("\r\n").unwrap();
-    match &text.chars().nth(0) {
-        Some(c) => match c {
-            '+' => (RESP::SimpleString(text[1..end].to_string()), end + 2),
-            '-' => (RESP::Error(text[1..end].to_string()), end + 2),
-            ':' => (RESP::Integer(text[1..end].parse().unwrap()), end + 2),
-            '$' => {
-                let len: usize = text[1..end].parse().unwrap();
-                (
-                    RESP::BulkString(text[(end + 2)..(end + 2 + len)].to_string()),
-                    end + 2 + len + 2,
-                )
-            }
-            '*' => {
-                let len: usize = text[1..end].parse().unwrap();
-                let mut res = Vec::new();
-                let mut ptr = end + 2;
-                for _ in 0..len {
-                    let (r, c) = decode(&text[ptr..text.len()]);
-                    res.push(r);
-                    ptr = ptr + c;
-                }
-                (RESP::Array(res), ptr)
-            }
-            _ => panic!(),
-        },
-        _ => panic!(),
-    }
-}
 
 fn process_text(text: &str) -> RESP {
     match text {
@@ -94,7 +36,7 @@ fn process_stream(stream: &mut TcpStream) -> std::io::Result<()> {
                 break;
             }
             input.append(&mut tmp_input[0..count].to_vec());
-            if input.len() >= 2 && input.ends_with(&[b'\r', b'\n']) {
+            if count < tmp_input.len() && input.len() >= 2 && input.ends_with(&[b'\r', b'\n']) {
                 break;
             }
         }
@@ -104,7 +46,7 @@ fn process_stream(stream: &mut TcpStream) -> std::io::Result<()> {
         }
 
         let raw_input = String::from_utf8(input).unwrap();
-        let queries = decode(&raw_input).0;
+        let queries = RESP::decode(&raw_input);
         // println!("{}", raw_input);
         // println!("{:?}", queries);
 
