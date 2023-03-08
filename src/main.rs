@@ -1,5 +1,6 @@
 mod redis;
 use crate::redis::command::Command;
+use crate::redis::engine::RedisEngine;
 use crate::redis::resp::RESP;
 
 use tokio::{
@@ -7,16 +8,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-fn process(query: &RESP) -> RESP {
-    match Command::from_resp(query) {
-        Command::Ping => RESP::SimpleString("PONG".to_string()),
-        Command::Commands => Command::supported_commands(),
-        Command::Echo(s) => RESP::BulkString(s),
-        Command::Unknown(_) => RESP::Error(format!("No such command: {:?}", query)),
-    }
-}
-
-async fn process_socket(socket: &mut TcpStream) -> anyhow::Result<()> {
+async fn process_socket(socket: &mut TcpStream, mut engine: RedisEngine) -> anyhow::Result<()> {
     loop {
         let mut input = Vec::new();
         loop {
@@ -36,11 +28,11 @@ async fn process_socket(socket: &mut TcpStream) -> anyhow::Result<()> {
         }
 
         let raw_input = String::from_utf8(input).unwrap();
-        let queries = RESP::from_str(&raw_input)?;
+        let query = RESP::from_str(&raw_input)?;
         // println!("{}", raw_input);
         // println!("{:?}", queries);
 
-        let response_resp = process(&queries);
+        let response_resp = (&mut engine).process_command(Command::from_resp(&query));
         let response_text = response_resp.to_string();
         // println!("response_resp: {:?}", response_resp);
         // println!("response: {}", response_text);
@@ -54,11 +46,12 @@ async fn main() -> anyhow::Result<()> {
     println!("Logs from your program will appear here!");
 
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+    let engine = RedisEngine {};
 
     loop {
         let (mut socket, _) = listener.accept().await.unwrap();
         tokio::spawn(async move {
-            if let Err(e) = process_socket(&mut socket).await {
+            if let Err(e) = process_socket(&mut socket, engine.clone()).await {
                 println!("{}", e);
             };
         });
