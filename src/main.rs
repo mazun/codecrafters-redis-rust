@@ -1,4 +1,6 @@
 mod redis;
+use std::sync::Arc;
+
 use crate::redis::command::Command;
 use crate::redis::engine::RedisEngine;
 use crate::redis::resp::RESP;
@@ -8,7 +10,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-async fn process_socket(socket: &mut TcpStream, mut engine: RedisEngine) -> anyhow::Result<()> {
+async fn process_socket(socket: &mut TcpStream, engine: Arc<RedisEngine>) -> anyhow::Result<()> {
     loop {
         let mut input = Vec::new();
         loop {
@@ -32,7 +34,7 @@ async fn process_socket(socket: &mut TcpStream, mut engine: RedisEngine) -> anyh
         // println!("{}", raw_input);
         // println!("{:?}", queries);
 
-        let response_resp = (&mut engine).process_command(Command::from_resp(&query));
+        let response_resp = engine.process_command(Command::from_resp(&query));
         let response_text = response_resp.to_string();
         // println!("response_resp: {:?}", response_resp);
         // println!("response: {}", response_text);
@@ -46,12 +48,13 @@ async fn main() -> anyhow::Result<()> {
     println!("Logs from your program will appear here!");
 
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-    let engine = RedisEngine {};
+    let engine = Arc::new(RedisEngine::new());
 
     loop {
         let (mut socket, _) = listener.accept().await.unwrap();
+        let e = engine.clone();
         tokio::spawn(async move {
-            if let Err(e) = process_socket(&mut socket, engine.clone()).await {
+            if let Err(e) = process_socket(&mut socket, e).await {
                 println!("{}", e);
             };
         });

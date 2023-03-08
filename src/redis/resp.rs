@@ -7,6 +7,7 @@ pub enum RESP {
     Integer(i64),
     BulkString(String),
     Array(Vec<RESP>),
+    Nil,
 }
 
 impl RESP {
@@ -26,6 +27,7 @@ impl RESP {
                         .join("")
                 )
             }
+            RESP::Nil => "$-1\r\n".to_string(),
         }
     }
 
@@ -61,11 +63,16 @@ fn decode_internal(text: &str) -> Result<(RESP, usize)> {
             '-' => Ok((RESP::Error(text[1..end].to_string()), end + 2)),
             ':' => Ok((RESP::Integer(text[1..end].parse()?), end + 2)),
             '$' => {
-                let len: usize = text[1..end].parse()?;
-                Ok((
-                    RESP::BulkString(text[(end + 2)..(end + 2 + len)].to_string()),
-                    end + 2 + len + 2,
-                ))
+                let len: i32 = text[1..end].parse()?;
+                if len == -1 {
+                    Ok((RESP::Nil, end + 2 + 2))
+                } else {
+                    let len = len as usize;
+                    Ok((
+                        RESP::BulkString(text[(end + 2)..(end + 2 + len)].to_string()),
+                        end + 2 + len + 2,
+                    ))
+                }
             }
             '*' => {
                 let len: usize = text[1..end].parse()?;
