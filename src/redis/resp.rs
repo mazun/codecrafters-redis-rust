@@ -29,6 +29,14 @@ impl RESP {
         }
     }
 
+    pub fn get_string(&self) -> Option<&String> {
+        match self {
+            RESP::SimpleString(s) => Some(s),
+            RESP::BulkString(s) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn from_str(text: &str) -> Result<RESP> {
         let (r, used_bytes) = decode_internal(text)?;
         if used_bytes == text.len() {

@@ -1,4 +1,5 @@
 mod redis;
+use crate::redis::command::Command;
 use crate::redis::resp::RESP;
 
 use tokio::{
@@ -6,23 +7,12 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-fn process_text(text: &str) -> RESP {
-    match text {
-        "PING" | "ping" => RESP::SimpleString("PONG".to_string()),
-        "COMMAND" | "command" => RESP::Array(vec![RESP::SimpleString("PING".to_string())]),
-        _ => RESP::Error(format!("No such command: {}", text)),
-    }
-}
-
 fn process(query: &RESP) -> RESP {
-    match &query {
-        RESP::SimpleString(s) => process_text(s),
-        RESP::BulkString(s) => process_text(s),
-        RESP::Array(arr) => match arr.len() {
-            1 => process(&arr[0]),
-            _ => RESP::Array(arr.into_iter().map(process).collect()),
-        },
-        _ => RESP::Error(format!("Invalid query: {:?}", query)),
+    match Command::from_resp(query) {
+        Command::Ping => RESP::SimpleString("PONG".to_string()),
+        Command::Commands => Command::supported_commands(),
+        Command::Echo(s) => RESP::BulkString(s),
+        Command::Unknown(_) => RESP::Error(format!("No such command: {:?}", query)),
     }
 }
 
