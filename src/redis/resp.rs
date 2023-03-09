@@ -39,6 +39,20 @@ impl RESP {
         }
     }
 
+    pub fn get_integer(&self) -> Option<i64> {
+        if let RESP::Integer(integer) = *self {
+            Some(integer)
+        } else if let Some(text) = self.get_string() {
+            if let Ok(integer) = text.parse() {
+                Some(integer)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn from_str(text: &str) -> Result<RESP> {
         let (r, used_bytes) = decode_internal(text)?;
         if used_bytes == text.len() {

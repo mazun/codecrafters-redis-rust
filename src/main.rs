@@ -32,7 +32,7 @@ async fn process_socket(socket: &mut TcpStream, engine: Arc<RedisEngine>) -> any
         let raw_input = String::from_utf8(input).unwrap();
         let query = RESP::from_str(&raw_input)?;
         // println!("{}", raw_input);
-        // println!("{:?}", queries);
+        // println!("{:?}", query);
 
         let response_resp = engine.process_command(Command::from_resp(&query));
         let response_text = response_resp.to_string();

@@ -1,12 +1,22 @@
 use crate::RESP;
 
+type MilliSeconds = u64;
+#[derive(Debug)]
+pub struct SetOption {
+    pub expire: Option<MilliSeconds>,
+}
+
 #[derive(Debug)]
 pub enum Command {
     Ping,
     Commands,
     Echo(String),
     Unknown(String),
-    Set { key: String, value: String },
+    Set {
+        key: String,
+        value: String,
+        set_option: SetOption,
+    },
     Get(String),
 }
 
@@ -36,9 +46,20 @@ impl Command {
                     if len >= 3 {
                         let key = args[1].get_string()?;
                         let value = args[2].get_string()?;
+                        let mut expire = None;
+                        if len >= 5 {
+                            if let Some(option) = args[3].get_string() {
+                                if option.to_lowercase() == "px" {
+                                    if let Some(expire_milliseconds) = args[4].get_integer() {
+                                        expire = Some(expire_milliseconds as u64);
+                                    }
+                                }
+                            }
+                        }
                         Some(Command::Set {
                             key: key.to_string(),
                             value: value.to_string(),
+                            set_option: SetOption { expire: expire },
                         })
                     } else {
                         None
